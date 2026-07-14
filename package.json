@@ -1,0 +1,30 @@
+{
+  "name": "ratevert-mcp",
+  "version": "0.3.0",
+  "description": "A read-only Model Context Protocol server for Ratevert asset conversions.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server.mjs",
+    "smoke": "node smoke-test.mjs",
+    "test": "node --test server.test.mjs",
+    "verify:release": "node scripts/verify-release-contents.mjs"
+  },
+  "files": [
+    "server.mjs",
+    "ratevert-client.mjs",
+    "README.md",
+    "LICENSE",
+    "SECURITY.md",
+    "CONTRIBUTING.md",
+    "CHANGELOG.md",
+    ".env.example"
+  ],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.25.1",
+    "express": "^4.21.2",
+    "zod": "^3.25.76"
+  }
+}

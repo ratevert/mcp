@@ -287,7 +287,11 @@ function normalizeTimestamp(value) {
     return null;
   }
 
-  const parsed = new Date(value);
+  // Ratevert's market feeds use Unix seconds while fiat feeds use ISO strings.
+  // JavaScript Date expects milliseconds for numeric input, so normalize epoch
+  // seconds before exposing source freshness to MCP clients.
+  const timestamp = typeof value === "number" && value > 0 && value < 100_000_000_000 ? value * 1000 : value;
+  const parsed = new Date(timestamp);
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
 }
 

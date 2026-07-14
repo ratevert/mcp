@@ -7,6 +7,8 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
 const UPDATED_AT = "2026-07-14T09:00:00.000Z";
+const NUMERIC_UPDATED_AT = 1784058929;
+const NUMERIC_UPDATED_AT_ISO = new Date(NUMERIC_UPDATED_AT * 1000).toISOString();
 let appServer;
 let endpoint;
 let upstreamServer;
@@ -21,7 +23,7 @@ function asset(code, market = "fiat") {
     name: code === "USD" ? "US Dollar" : code === "BTC" ? "Bitcoin" : "Euro",
     slug: code.toLowerCase(),
     subtitle: null,
-    updatedAt: UPDATED_AT,
+    updatedAt: code === "BTC" ? NUMERIC_UPDATED_AT : UPDATED_AT,
     usdPrice: code === "BTC" ? 100000 : code === "EUR" ? 1.25 : 1,
   };
 }
@@ -216,6 +218,13 @@ test("returns canonical source and freshness metadata for rate, comparison, and 
     assert.equal(comparison.structuredContent.view, "comparison");
     assert.equal(comparison.structuredContent.as_of, UPDATED_AT);
     assert.equal(comparison.structuredContent.totalAssets, 3);
+
+    const numericFeedRate = await client.callTool({
+      name: "get_rate",
+      arguments: { base: "btc", quote: "btc" },
+    });
+    assert.equal(numericFeedRate.isError ?? false, false);
+    assert.equal(numericFeedRate.structuredContent.as_of, NUMERIC_UPDATED_AT_ISO);
   });
 });
 

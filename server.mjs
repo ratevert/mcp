@@ -817,7 +817,11 @@ export function startMcpServer() {
 }
 
 const invokedAsScript = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+// PM2 loads ESM through its fork wrapper, so `process.argv[1]` points to the
+// wrapper rather than this file. Its per-process id is the explicit runtime
+// signal that this module should own the listener.
+const runningUnderPm2 = Boolean(process.env.pm_id);
 
-if (invokedAsScript) {
+if (invokedAsScript || runningUnderPm2) {
   startMcpServer();
 }

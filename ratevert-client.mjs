@@ -11,7 +11,7 @@ const PUBLIC_SITE_URL = normalizeUrl(process.env.RATEVERT_MCP_SITE_URL ?? "https
 const SOURCE_SITE = new URL(PUBLIC_SITE_URL).hostname;
 const DEFAULT_HEADERS = {
   accept: "application/json",
-  "user-agent": "ratevert-mcp/0.3.0",
+  "user-agent": "ratevert-mcp/0.3.1",
 };
 
 export class RatevertApiError extends Error {

@@ -15,7 +15,7 @@ const expectedPairRequests = Number.parseInt(
 );
 const client = new Client({
   name: "ratevert-mcp-smoke-test",
-  version: "0.3.0",
+  version: "0.3.1",
 });
 const transport = new StreamableHTTPClientTransport(endpoint);
 

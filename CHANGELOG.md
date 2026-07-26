@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1 - 2026-07-26
+
+- Updated the MCP SDK and transitive dependencies to patched release versions.
+- Made contract-test server startup and teardown deterministic.
+- Kept the four-tool read-only protocol surface unchanged.
+
 ## 0.3.0 - 2026-07-14
 
 - Added `convert_amount` for exact single-value conversions.

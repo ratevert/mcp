@@ -374,7 +374,7 @@ function createServer(context) {
   const server = new McpServer(
     {
       name: "Ratevert",
-      version: "0.3.0",
+      version: "0.3.1",
       icons: [
         {
           src: `${PUBLIC_SITE_URL}/favicon.ico`,
@@ -729,13 +729,13 @@ export function createMcpApplication({ trustProxy = TRUST_PROXY } = {}) {
       },
       supportEmail: SUPPORT_EMAIL,
       tools: ["search_assets", "get_rate", "convert_amount", "compare_assets"],
-      version: "0.3.0",
+      version: "0.3.1",
       websiteUrl: PUBLIC_SITE_URL,
     });
   });
 
   app.get("/healthz", (_request, response) => {
-    response.json({ endpoint: PUBLIC_MCP_URL, ok: true, version: "0.3.0" });
+    response.json({ endpoint: PUBLIC_MCP_URL, ok: true, version: "0.3.1" });
   });
 
   app.post("/mcp", originGuard, requireJsonRequest, express.json({ limit: REQUEST_BODY_LIMIT }), async (request, response) => {
@@ -814,7 +814,7 @@ export function startMcpServer() {
         rateLimitWindowMs: RATE_LIMIT_WINDOW_MS,
         status: "listening",
         supportEmail: SUPPORT_EMAIL,
-        version: "0.3.0",
+        version: "0.3.1",
       }),
     );
   });

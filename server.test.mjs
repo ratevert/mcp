@@ -34,18 +34,26 @@ function writeJson(response, status, body) {
 }
 
 function listen(server) {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const listener = server.listen(0, "127.0.0.1", () => {
+      listener.off("error", reject);
       resolve({
         port: listener.address().port,
         server: listener,
       });
     });
+    listener.once("error", reject);
   });
 }
 
 function close(server) {
+  if (!server) {
+    return Promise.resolve();
+  }
+
   return new Promise((resolve, reject) => {
+    server.closeIdleConnections?.();
+    server.closeAllConnections?.();
     server.close((error) => (error ? reject(error) : resolve()));
   });
 }
@@ -133,15 +141,15 @@ function createFakeRatevertApi() {
 }
 
 async function withClient(callback) {
-  const client = new Client({ name: "ratevert-mcp-contract-test", version: "0.3.0" });
+  const client = new Client({ name: "ratevert-mcp-contract-test", version: "0.3.1" });
   const transport = new StreamableHTTPClientTransport(new URL(`${endpoint}/mcp`));
 
   try {
     await client.connect(transport);
     return await callback(client);
   } finally {
-    await transport.close();
     await client.close?.();
+    await transport.close().catch(() => undefined);
   }
 }
 
@@ -268,7 +276,7 @@ test("rejects untrusted origins, malformed JSON, and non-JSON requests", async (
     params: {
       protocolVersion: "2025-03-26",
       capabilities: {},
-      clientInfo: { name: "contract-test", version: "0.3.0" },
+      clientInfo: { name: "contract-test", version: "0.3.1" },
     },
   });
   const forbiddenOrigin = await fetch(`${endpoint}/mcp`, {

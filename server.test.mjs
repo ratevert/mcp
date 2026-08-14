@@ -12,6 +12,7 @@ const NUMERIC_UPDATED_AT_ISO = new Date(NUMERIC_UPDATED_AT * 1000).toISOString()
 let appServer;
 let endpoint;
 let upstreamServer;
+let rateRequestCount = 0;
 
 function asset(code, market = "fiat") {
   return {
@@ -77,6 +78,7 @@ function createFakeRatevertApi() {
     }
 
     if (url.pathname === "/api/rate") {
+      rateRequestCount += 1;
       const baseCode = (url.searchParams.get("base") ?? "").toUpperCase();
       const quoteCode = (url.searchParams.get("quote") ?? "").toUpperCase();
 
@@ -90,16 +92,19 @@ function createFakeRatevertApi() {
       const base = asset(baseCode || "USD", baseCode === "BTC" ? "crypto" : "fiat");
       const quote = asset(quoteCode || "EUR", quoteCode === "BTC" ? "crypto" : "fiat");
       const rate = base.code === "USD" && quote.code === "EUR" ? 1.25 : base.code === "USD" && quote.code === "BTC" ? 0.00001 : 0.8;
+      const sourceUrl = baseCode === "EVIL"
+        ? "https://attacker.example/phishing"
+        : `https://ratevert.test/${base.slug}/${quote.slug}`;
 
       writeJson(response, 200, {
         base,
         canonicalPath: `/${base.slug}/${quote.slug}`,
-        canonicalUrl: `https://ratevert.test/${base.slug}/${quote.slug}`,
+        canonicalUrl: sourceUrl,
         normalized: false,
         quote,
         rate,
         sourceSite: "ratevert.test",
-        sourceUrl: `https://ratevert.test/${base.slug}/${quote.slug}`,
+        sourceUrl,
       });
       return;
     }
@@ -158,6 +163,7 @@ before(async () => {
   const { port: upstreamPort } = await listen(upstreamServer);
   process.env.RATEVERT_MCP_API_BASE_URL = `http://127.0.0.1:${upstreamPort}`;
   process.env.RATEVERT_MCP_ALLOWED_ORIGINS = "https://ratevert.test";
+  process.env.RATEVERT_MCP_SITE_URL = "https://ratevert.test";
   process.env.RATEVERT_MCP_PAIR_RATE_LIMIT_MAX_REQUESTS = "2";
   process.env.RATEVERT_MCP_PAIR_RATE_LIMIT_WINDOW_MS = "300000";
 
@@ -236,6 +242,20 @@ test("returns canonical source and freshness metadata for rate, comparison, and 
   });
 });
 
+test("does not expose off-origin upstream citation URLs", async () => {
+  await withClient(async (client) => {
+    const rate = await client.callTool({
+      name: "get_rate",
+      arguments: { base: "evil", quote: "usd" },
+    });
+
+    assert.equal(rate.isError ?? false, false);
+    assert.equal(rate.structuredContent.sourceUrl, "https://ratevert.test/");
+    assert.equal(rate.structuredContent.canonicalUrl, "https://ratevert.test/");
+    assert.equal(JSON.stringify(rate.structuredContent).includes("attacker.example"), false);
+  });
+});
+
 test("returns safe MCP errors for invalid assets and comparison-limit handoff", async () => {
   await withClient(async (client) => {
     const unknown = await client.callTool({
@@ -256,6 +276,7 @@ test("returns safe MCP errors for invalid assets and comparison-limit handoff", 
 });
 
 test("enforces deterministic per-pair limits without trusting forwarded headers", async () => {
+  const requestsBeforeLimit = rateRequestCount;
   await withClient(async (client) => {
     const limited = await client.callTool({
       name: "get_rate",
@@ -266,6 +287,11 @@ test("enforces deterministic per-pair limits without trusting forwarded headers"
     assert.equal(limited.structuredContent.error.code, "rate_limit_exceeded");
     assert.equal(limited.structuredContent.error.status, 429);
   });
+  assert.equal(
+    rateRequestCount,
+    requestsBeforeLimit,
+    "A rejected pair request must not reach the Ratevert upstream API.",
+  );
 });
 
 test("rejects untrusted origins, malformed JSON, and non-JSON requests", async () => {

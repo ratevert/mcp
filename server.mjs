@@ -80,6 +80,10 @@ const ALLOWED_ORIGINS = parseOriginList(
 const MARKET_OPTIONS = ["all", "fiat", "stocks", "etfs", "funds", "crypto"];
 const MarketSchema = z.enum(MARKET_OPTIONS);
 const rateLimitStore = new Map();
+const MAX_RATE_LIMIT_BUCKETS = Math.max(
+  1_000,
+  parseIntEnv("RATEVERT_MCP_MAX_RATE_LIMIT_BUCKETS", 20_000),
+);
 
 function formatRate(value) {
   const absolute = Math.abs(value);
@@ -125,9 +129,21 @@ function cleanupRateLimitStore(now) {
       rateLimitStore.delete(key);
     }
   }
+
+  while (rateLimitStore.size > MAX_RATE_LIMIT_BUCKETS) {
+    const oldestKey = rateLimitStore.keys().next().value;
+
+    if (!oldestKey) {
+      break;
+    }
+
+    rateLimitStore.delete(oldestKey);
+  }
 }
 
 function consumeRateLimit({ key, maxRequests, now = Date.now(), windowMs }) {
+  maxRequests = Math.max(1, Math.floor(maxRequests));
+  windowMs = Math.max(1_000, Math.floor(windowMs));
   cleanupRateLimitStore(now);
 
   let entry = rateLimitStore.get(key);
@@ -226,7 +242,7 @@ function buildToolError(error, fallbackMessage) {
     };
   }
 
-  console.error("Unexpected MCP tool error", error);
+  console.error("Unexpected MCP tool error", error instanceof Error ? error.name : "UnknownError");
 
   return {
     content: [{ type: "text", text: `Error: ${fallbackMessage}` }],
@@ -279,6 +295,25 @@ function checkToolRateLimit({ key, maxRequests, message, windowMs }) {
     message,
     retryAfterSeconds: rateLimit.retryAfterSeconds,
     windowMs: rateLimit.windowMs,
+  });
+}
+
+function checkInvocationRateLimit(context) {
+  return checkToolRateLimit({
+    key: `invocation:${context.ip}`,
+    maxRequests: context.policy.maxRequests,
+    message: "Too many Ratevert MCP tool calls for the free plan. Try again shortly.",
+    windowMs: context.policy.rateLimitWindowMs,
+  });
+}
+
+function checkUpstreamPairRateLimit(context, base, quote) {
+  const pairKey = [base, quote].map(normalizeRateLimitPart).join("/");
+  return checkToolRateLimit({
+    key: `pair-input:${context.ip}:${pairKey}`,
+    maxRequests: context.policy.pairRateLimitMaxRequests,
+    message: `Ratevert MCP allows ${context.policy.pairRateLimitMaxRequests} upstream pair lookups per IP every ${Math.round(context.policy.pairRateLimitWindowMs / 1000)} seconds. Try again shortly.`,
+    windowMs: context.policy.pairRateLimitWindowMs,
   });
 }
 
@@ -409,6 +444,12 @@ function createServer(context) {
       },
     },
     async ({ query, market = "all", limit = 10 }) => {
+      const invocationRateLimitError = checkInvocationRateLimit(context);
+
+      if (invocationRateLimitError) {
+        return invocationRateLimitError;
+      }
+
       try {
         const payload = await searchRatevertAssets({ query, market, limit });
         const output = buildSearchOutput(payload, { market, query });
@@ -454,24 +495,34 @@ function createServer(context) {
       },
     },
     async ({ base, quote }) => {
-      const pairKey = [normalizeRateLimitPart(base), normalizeRateLimitPart(quote)].join("/");
-      const pairRateLimitError = checkToolRateLimit({
-        key: `pair:${context.ip}:${pairKey}`,
-        maxRequests: context.policy.pairRateLimitMaxRequests,
-        message: `Ratevert MCP allows ${context.policy.pairRateLimitMaxRequests} requests per pair per IP every ${Math.round(context.policy.pairRateLimitWindowMs / 1000)} seconds. Try this pair again shortly.`,
-        windowMs: context.policy.pairRateLimitWindowMs,
-      });
+      const invocationRateLimitError = checkInvocationRateLimit(context);
 
-      if (pairRateLimitError) {
-        logEvent("get_rate_rate_limit", {
-          ip: context.ip,
-          requestId: context.requestId,
-        });
-        return pairRateLimitError;
+      if (invocationRateLimitError) {
+        return invocationRateLimitError;
+      }
+
+      const upstreamRateLimitError = checkUpstreamPairRateLimit(context, base, quote);
+      if (upstreamRateLimitError) {
+        return upstreamRateLimitError;
       }
 
       try {
         const payload = await getRatevertRate({ base, quote });
+        const pairKey = [payload.base.slug, payload.quote.slug].map(normalizeRateLimitPart).join("/");
+        const pairRateLimitError = checkToolRateLimit({
+          key: `pair:${context.ip}:${pairKey}`,
+          maxRequests: context.policy.pairRateLimitMaxRequests,
+          message: `Ratevert MCP allows ${context.policy.pairRateLimitMaxRequests} requests per pair per IP every ${Math.round(context.policy.pairRateLimitWindowMs / 1000)} seconds. Try this pair again shortly.`,
+          windowMs: context.policy.pairRateLimitWindowMs,
+        });
+
+        if (pairRateLimitError) {
+          logEvent("get_rate_rate_limit", {
+            ip: context.ip,
+            requestId: context.requestId,
+          });
+          return pairRateLimitError;
+        }
         const output = buildRateOutput(payload);
 
         logEvent("get_rate", {
@@ -514,24 +565,34 @@ function createServer(context) {
       },
     },
     async ({ amount, from, to }) => {
-      const pairKey = [normalizeRateLimitPart(from), normalizeRateLimitPart(to)].join("/");
-      const pairRateLimitError = checkToolRateLimit({
-        key: `pair:${context.ip}:${pairKey}`,
-        maxRequests: context.policy.pairRateLimitMaxRequests,
-        message: `Ratevert MCP allows ${context.policy.pairRateLimitMaxRequests} requests per pair per IP every ${Math.round(context.policy.pairRateLimitWindowMs / 1000)} seconds. Try this pair again shortly.`,
-        windowMs: context.policy.pairRateLimitWindowMs,
-      });
+      const invocationRateLimitError = checkInvocationRateLimit(context);
 
-      if (pairRateLimitError) {
-        logEvent("convert_amount_rate_limit", {
-          ip: context.ip,
-          requestId: context.requestId,
-        });
-        return pairRateLimitError;
+      if (invocationRateLimitError) {
+        return invocationRateLimitError;
+      }
+
+      const upstreamRateLimitError = checkUpstreamPairRateLimit(context, from, to);
+      if (upstreamRateLimitError) {
+        return upstreamRateLimitError;
       }
 
       try {
         const payload = await getRatevertRate({ base: from, quote: to });
+        const pairKey = [payload.base.slug, payload.quote.slug].map(normalizeRateLimitPart).join("/");
+        const pairRateLimitError = checkToolRateLimit({
+          key: `pair:${context.ip}:${pairKey}`,
+          maxRequests: context.policy.pairRateLimitMaxRequests,
+          message: `Ratevert MCP allows ${context.policy.pairRateLimitMaxRequests} requests per pair per IP every ${Math.round(context.policy.pairRateLimitWindowMs / 1000)} seconds. Try this pair again shortly.`,
+          windowMs: context.policy.pairRateLimitWindowMs,
+        });
+
+        if (pairRateLimitError) {
+          logEvent("convert_amount_rate_limit", {
+            ip: context.ip,
+            requestId: context.requestId,
+          });
+          return pairRateLimitError;
+        }
         const convertedAmount = amount * payload.rate;
 
         if (!Number.isFinite(convertedAmount)) {
@@ -607,8 +668,13 @@ function createServer(context) {
     },
     async ({ source, targets }) => {
       const totalAssets = 1 + targets.length;
+      const invocationRateLimitError = checkInvocationRateLimit(context);
 
-      if (totalAssets === context.policy.compareAssetLimit) {
+      if (invocationRateLimitError) {
+        return invocationRateLimitError;
+      }
+
+      if (totalAssets >= context.policy.compareAssetLimit) {
         const comparisonRateLimitError = checkToolRateLimit({
           key: `compare:max-assets:${context.ip}`,
           maxRequests: context.policy.maxComparisonRateLimitMaxRequests,
@@ -761,7 +827,7 @@ export function createMcpApplication({ trustProxy = TRUST_PROXY } = {}) {
       await server.connect(transport);
       await transport.handleRequest(request, response, request.body);
     } catch (error) {
-      console.error("MCP transport error", error);
+      console.error("MCP transport error", error instanceof Error ? error.name : "UnknownError");
 
       if (!response.headersSent) {
         response.status(500).json({

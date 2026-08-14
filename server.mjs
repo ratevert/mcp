@@ -12,6 +12,9 @@ import {
   RatevertApiError,
   searchAssets as searchRatevertAssets,
 } from "./ratevert-client.mjs";
+import { captureUnexpectedMcpError, initializeMcpMonitoring } from "./monitoring.mjs";
+
+initializeMcpMonitoring();
 
 function parseIntEnv(name, fallback) {
   const raw = process.env[name];
@@ -243,6 +246,7 @@ function buildToolError(error, fallbackMessage) {
   }
 
   console.error("Unexpected MCP tool error", error instanceof Error ? error.name : "UnknownError");
+  captureUnexpectedMcpError(error);
 
   return {
     content: [{ type: "text", text: `Error: ${fallbackMessage}` }],
@@ -828,6 +832,7 @@ export function createMcpApplication({ trustProxy = TRUST_PROXY } = {}) {
       await transport.handleRequest(request, response, request.body);
     } catch (error) {
       console.error("MCP transport error", error instanceof Error ? error.name : "UnknownError");
+      captureUnexpectedMcpError(error);
 
       if (!response.headersSent) {
         response.status(500).json({
@@ -891,6 +896,14 @@ const invokedAsScript = process.argv[1] && import.meta.url === pathToFileURL(pro
 // wrapper rather than this file. Its per-process id is the explicit runtime
 // signal that this module should own the listener.
 const runningUnderPm2 = Boolean(process.env.pm_id);
+
+process.on("uncaughtExceptionMonitor", (error) => {
+  captureUnexpectedMcpError(error);
+});
+
+process.on("unhandledRejection", (reason) => {
+  captureUnexpectedMcpError(reason);
+});
 
 if (invokedAsScript || runningUnderPm2) {
   startMcpServer();

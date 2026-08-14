@@ -11,6 +11,7 @@ const allowedPaths = new Set([
   "SECURITY.md",
   "package-lock.json",
   "package.json",
+  "monitoring.mjs",
   "ratevert-client.mjs",
   "server.mjs",
   "server.test.mjs",

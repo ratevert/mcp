@@ -9,6 +9,7 @@ const allowedPaths = new Set([
   "LICENSE",
   "README.md",
   "SECURITY.md",
+  "server.json",
   "package-lock.json",
   "package.json",
   "monitoring.mjs",

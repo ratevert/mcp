@@ -1,0 +1,19 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "com.ratevert/mcp",
+  "title": "Ratevert MCP",
+  "description": "Read-only Ratevert MCP for asset search, pair rates, and conversions.",
+  "version": "0.3.1",
+  "websiteUrl": "https://ratevert.com/mcp",
+  "repository": {
+    "url": "https://github.com/ratevert/mcp",
+    "source": "github",
+    "id": "1300827846"
+  },
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://ratevert.com/api/mcp"
+    }
+  ]
+}

@@ -41,6 +41,8 @@ and set the URL to `https://ratevert.com/api/mcp`. ChatGPT availability depends
 on the account and Developer Mode features provided by OpenAI; Ratevert is not
 published as a ChatGPT store plugin.
 
+The official MCP Registry listing is [`com.ratevert/mcp`](https://registry.modelcontextprotocol.io/v0.1/servers?search=com.ratevert%2Fmcp). Use that as the public distribution channel; the hosted Streamable HTTP URL remains `https://ratevert.com/api/mcp`.
+
 Human documentation and connection guidance: [ratevert.com/mcp](https://ratevert.com/mcp).
 
 ## Run locally
